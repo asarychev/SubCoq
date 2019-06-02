@@ -1,4 +1,4 @@
-import re
+import re, os.path
 import sublime, sublime_plugin
 from .coqtop import Coqtop, find_coqtop
 
@@ -42,8 +42,8 @@ class CoqtopManager:
         path = self.settings.get('coqtop_path') or find_coqtop()
         if path is None:
             sublime.error_message('Cannot find Coqtop.')
-            return False        
-        pwd = sublime.Window.folders(sublime.active_window())[0]
+            return False
+        pwd = os.path.dirname(sublime.active_window().active_view().file_name())
         args = ["-R", pwd, ""]
         args = self.settings.get('coqtop_args') + args
         debug = 'coqtop' in self.settings.get('coq_debug')
