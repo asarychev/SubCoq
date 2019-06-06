@@ -1,4 +1,6 @@
 [
+    { "keys": ["ctrl+alt+down"], "command": "coq_next_statement",
+      "context": [{ "key": "coq", "operator": "equal", "operand": "editor" }] },
     { "keys": ["super+ctrl+n"], "command": "coq_next_statement",
       "context": [{ "key": "coq", "operator": "equal", "operand": "editor" }] },
     { "keys": ["super+ctrl+u"], "command": "coq_undo_statement",
