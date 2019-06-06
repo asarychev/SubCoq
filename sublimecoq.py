@@ -127,16 +127,17 @@ class State(object):
             # print((1, p, r))
             if r and r.begin() == p:
                 self.add_region(r.end())
-                return
+                return True
 
             r = self.view.find(r'\.', p)
             # print((2, p, r))
             if r:
                 self.add_region(r.end())
-                return
+                return True
 
         # Couldn't find a new region. Sound?
-        print("No new region!")
+        # print("No new region!")
+        return False
 
     def detect_changes(self):
         regs = sorted(self.view.get_regions(RKEY))
@@ -153,6 +154,16 @@ class State(object):
                 print("Edit_at result: %s" % (res,))
 
                 break
+
+    def goto(self, pos):
+        while not (self.proven and pos <= self.proven[-1].b):
+            if not self.next():
+                # print("Could not get to the cursor.")
+                return
+        else:
+            # print("Already proven at %s" % (pos,))
+            return      # It's already proven
+
 _state = {}
 
 class Tag(object):
@@ -241,8 +252,6 @@ class CoqTop(object):
     def parse_output(self):
         print("Thread started.")
 
-        self.lvl = 0
-        self.state = 0
         self.buf = b''
         self.bpos = 0
         self.tags = [Tag(None, None)]
@@ -257,9 +266,8 @@ class CoqTop(object):
             # print("Got %d chunk" % (len(chunk),))
 
             while True:
-                handler = getattr(self, "H_%d" % (self.state))
                 oldpos = self.bpos
-                if handler():
+                if self._get_some():
                     assert oldpos < self.bpos
                 else:
                     self.buf = self.buf[self.bpos:]
@@ -276,7 +284,7 @@ class CoqTop(object):
     def is_empty(self):
         return self.bpos >= len(self.buf)
 
-    def H_0(self):
+    def _get_some(self):
         # get a tag
         self.skip_ws()
         if self.is_empty():
@@ -340,9 +348,6 @@ class CoqTop(object):
             self.error("Bad tag: %s" % (s,))
 
         self.bpos += len(m.group(0))
-        # self.state = 1
-        if not closed:
-            self.lvl += 1
         return True
 
     def stop(self):
@@ -363,16 +368,20 @@ def plugin_loaded():
 
 def plugin_unloaded():
     '''Clean up'''
-    _state.clear()
     for w in sublime.windows():
         for v in w.views():
             v.erase_regions(RKEY)
 
-    for (_, st) in _state.items():
+    for (id, st) in _state.items():
         st.coqtop.stop()
 
+    _state.clear()
+
 def _get_state(view):
-    return _state.setdefault(view.id(), State(view))
+    if view.id() not in _state:
+        _state[view.id()] = State(view)
+
+    return _state[view.id()]
 
 entities = {
 'nbsp': ' ',
@@ -397,8 +406,6 @@ def _2str(s):
 class Listener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):
-        # print("Class %s, Settings: %s" % (cls, settings,))
-        # print(dir(settings))
         return settings.get('syntax').endswith('/Coq.sublime-syntax')
 
     def on_query_context(self, key, operator, operand, match_all):
@@ -437,9 +444,25 @@ class Listener(sublime_plugin.ViewEventListener):
         print("on_close")
         del _state[self.view.id()]
 
-class CoqNextStatementCommand(sublime_plugin.TextCommand):
+class CmdBase(sublime_plugin.TextCommand):
+    def is_enabled(self):
+        return self.view.settings().get('syntax').endswith('/Coq.sublime-syntax')
+
+class CoqNextStatementCommand(CmdBase):
     def run(self, edit, until=None):
         ''
         # print("Next %s" % (edit,))
 
         _get_state(self.view).next()
+
+class CoqGoHereCommand(CmdBase):
+    def run(self, edit, until=None):
+        ''
+        print("Go here %s" % (edit,))
+
+        sel = self.view.sel()
+        if sel:
+            cursor_pos = sel[0].begin()
+            _get_state(self.view).goto(cursor_pos)
+        else:
+            print("No selection!")
